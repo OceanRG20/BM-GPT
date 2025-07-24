@@ -5,14 +5,17 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QTextCursor, QColor, QTextCharFormat, QFont
 from PyQt5.QtCore import Qt, QTimer
-from bookmap_client import BookmapDataClient
+from datetime import datetime
+
 from chatgpt_client import ChatGPTClient
+from ocr_capture import extract_bookmap_text
 
 class GPTWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("🧠 BM-GPT Live Assistant")
-        self.setFixedSize(720, 540)
+        self.setMinimumSize(1024, 720)
+        self.resize(1024, 720)
         self.setStyleSheet("""
             QWidget { background-color: #111; font-family: Consolas; font-size: 14px; color: #eee; }
             QLineEdit { background-color: #222; color: #fff; border: 1px solid #555; padding: 6px; border-radius: 5px; }
@@ -39,25 +42,27 @@ class GPTWindow(QWidget):
         input_layout.addWidget(self.send_button)
         self.layout.addLayout(input_layout)
 
-        mode_layout = QHBoxLayout()
+        control_layout = QHBoxLayout()
         self.mode_toggle = QCheckBox("Auto-Commentary Mode")
         self.mode_toggle.stateChanged.connect(self.toggle_mode)
         self.mode_label = QLabel("🔴 Manual mode")
         self.mode_label.setStyleSheet("color: red; font-weight: bold; padding-left: 10px;")
-        mode_layout.addWidget(self.mode_toggle)
-        mode_layout.addWidget(self.mode_label)
-        mode_layout.addStretch()
-        self.layout.addLayout(mode_layout)
-
-        self.latest_data = None
-        self.bookmap_client = BookmapDataClient(self.handle_new_data)
-        self.bookmap_client.start()
+        self.clear_button = QPushButton("🚹 Clear")
+        self.clear_button.clicked.connect(self.clear_display)
+        self.copy_button = QPushButton("📂 Copy")
+        self.copy_button.clicked.connect(self.copy_display)
+        control_layout.addWidget(self.mode_toggle)
+        control_layout.addWidget(self.mode_label)
+        control_layout.addStretch()
+        control_layout.addWidget(self.clear_button)
+        control_layout.addWidget(self.copy_button)
+        self.layout.addLayout(control_layout)
 
         self.gpt = ChatGPTClient()
 
         self.timer = QTimer()
-        self.timer.setInterval(10000)
-        self.timer.timeout.connect(self.auto_comment)
+        self.timer.setInterval(3000)  # Every 10 seconds
+        self.timer.timeout.connect(self.handle_auto_commentary)
         self.timer.start()
 
     def toggle_mode(self):
@@ -68,17 +73,18 @@ class GPTWindow(QWidget):
             self.mode_label.setText("🔴 Manual mode")
             self.mode_label.setStyleSheet("color: red; font-weight: bold; padding-left: 10px;")
 
-    def handle_new_data(self, data):
-        print("[Main] Received data:", data)  # DEBUG
-        self.latest_data = data
-        if self.mode_toggle.isChecked():
-            message = str(data)
-            self.append_message("🧑 You (📡 Auto)", message, QColor("#ccff66"))  # Show auto message
-            self.send_to_gpt(message)
+    def handle_auto_commentary(self):
+        if not self.mode_toggle.isChecked():
+            return
 
-    def auto_comment(self):
-        if self.mode_toggle.isChecked() and self.latest_data:
-            self.send_to_gpt(str(self.latest_data))
+        extracted_text = extract_bookmap_text()
+        if not extracted_text:
+            self.append_message("🧠 BM-GPT", "No data from Bookmap. Skipped integration.", QColor("#ff6666"))
+            return
+
+        now = datetime.now().strftime("%H:%M:%S")
+        self.append_message("🧠 BM-GPT", f"[{now}] Analyzing Bookmap data...", QColor("#ffaa33"))
+        self.send_to_gpt(extracted_text, show_interpreting=False)
 
     def send_message(self):
         user_text = self.input_field.text().strip()
@@ -86,12 +92,13 @@ class GPTWindow(QWidget):
             return
         self.append_message("🧑 You", user_text, QColor("#ccff66"))
         self.input_field.clear()
-        self.send_to_gpt(user_text)
+        self.send_to_gpt(user_text, show_interpreting=True)
 
-    def send_to_gpt(self, text):
-        self.append_message("🧠 BM-GPT", f"Interpreting: '{text}'", QColor("#ffa500"))
+    def send_to_gpt(self, text, show_interpreting=True):
+        if show_interpreting:
+            self.append_message("🧠 BM-GPT", f"Interpreting: '{text}'", QColor("#ffa500"))
         response = self.gpt.ask(text)
-        self.append_message("🧠 BM-GPT", response, QColor("#66ffcc"))
+        self.append_message("🧠 BM-GPT\n", response, QColor("#66ffcc"))
 
     def append_message(self, sender, message, color):
         cursor = self.chat_display.textCursor()
@@ -105,9 +112,11 @@ class GPTWindow(QWidget):
         self.chat_display.setTextCursor(cursor)
         self.chat_display.ensureCursorVisible()
 
-    def closeEvent(self, event):
-        self.bookmap_client.stop()
-        event.accept()
+    def clear_display(self):
+        self.chat_display.clear()
+
+    def copy_display(self):
+        QApplication.clipboard().setText(self.chat_display.toPlainText())
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

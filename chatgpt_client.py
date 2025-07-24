@@ -1,6 +1,3 @@
-# ===========================
-# chatgpt_client.py (compatible with openai>=1.0.0)
-# ===========================
 import openai
 from config import OPENAI_API_KEY, MODEL_NAME, BASE_PROMPT
 
