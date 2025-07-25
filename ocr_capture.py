@@ -4,7 +4,9 @@ import pytesseract
 from PIL import Image
 
 # Optional: Set this if Tesseract is not in PATH
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+from config import TESSERACT_CMD
+
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
 
 def extract_bookmap_text():
     try:
@@ -14,12 +16,12 @@ def extract_bookmap_text():
                 if "bookmap" in w.title.lower() and w.visible:
                     print(f"✅ Found window: '{w.title}' (visible)")
                     x, y, w_, h = w.left, w.top, w.width, w.height
-                    region = (x + 100, y + 100, w_ - 200, h - 200)  # Customize as needed
+                    region = (x, y, w_, h)  # Capture full window
                     screenshot = pyautogui.screenshot(region=region)
                     # Optional: save for debugging
                     screenshot.save("bookmap_debug_capture.png")
                     text = pytesseract.image_to_string(screenshot)
-                    return text.strip()
+                    return text
             except Exception as e:
                 print(f"⚠️ Skipping window due to error: {e}")
                 continue
